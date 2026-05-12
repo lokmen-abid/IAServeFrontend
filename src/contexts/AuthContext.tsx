@@ -33,6 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             full_name: response.user.full_name,
             role: response.user.role,
             status: 'active',
+            club_id: response.user.club_id,
         }
 
         localStorage.setItem('token', response.access_token)

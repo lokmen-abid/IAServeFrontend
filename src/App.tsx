@@ -5,6 +5,9 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import AthletesPage from './pages/AthletesPage'
+import Layout from './components/layout/Layout'
+import AdminPage from './pages/AdminPage'
+
 
 function AppRoutes() {
   const { isAuthenticated } = useAuth()
@@ -26,7 +29,9 @@ function AppRoutes() {
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <DashboardPage />
+                 <Layout>
+                    <DashboardPage />
+                 </Layout>
               </ProtectedRoute>
             }
         />
@@ -34,10 +39,22 @@ function AppRoutes() {
             path="/athletes"
             element={
               <ProtectedRoute>
-                <AthletesPage />
+                  <Layout>
+                    <AthletesPage />
+                  </Layout>
               </ProtectedRoute>
             }
         />
+          <Route
+              path="/admin"
+              element={
+                  <ProtectedRoute adminOnly>
+                      <Layout>
+                          <AdminPage />
+                      </Layout>
+                  </ProtectedRoute>
+              }
+          />
 
         {/* Redirection par défaut */}
         <Route
