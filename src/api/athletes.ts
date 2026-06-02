@@ -5,6 +5,7 @@ export interface Athlete {
     specialist_id: string
     name: string
     age: number
+    sex: 'male' | 'female'
     dominant_hand: 'right' | 'left'
     medical_notes?: string
     created_at: string
@@ -13,6 +14,7 @@ export interface Athlete {
 export interface AthleteCreate {
     name: string
     age: number
+    sex: 'male' | 'female'
     dominant_hand: 'right' | 'left'
     medical_notes?: string
 }
@@ -20,6 +22,7 @@ export interface AthleteCreate {
 export interface AthleteUpdate {
     name?: string
     age?: number
+    sex?: 'male' | 'female'
     dominant_hand?: 'right' | 'left'
     medical_notes?: string
 }
