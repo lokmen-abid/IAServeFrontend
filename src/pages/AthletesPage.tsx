@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getAthletes, createAthlete, updateAthlete, deleteAthlete } from '../api/athletes'
 import type { Athlete, AthleteCreate, AthleteUpdate } from '../api/athletes'
 import AthleteCard from '../components/athletes/AthleteCard'
@@ -6,7 +7,7 @@ import AthleteForm from '../components/athletes/AthleteForm'
 import { useToast } from '../contexts/ToastContext'
 
 
-type Modal = 'create' | 'edit' | 'delete' | 'sessions' | null
+type Modal = 'create' | 'edit' | 'delete' | null
 
 export default function AthletesPage() {
     const [athletes, setAthletes]           = useState<Athlete[]>([])
@@ -18,6 +19,7 @@ export default function AthletesPage() {
     const [formError, setFormError]         = useState('')
     const [deleteLoading, setDeleteLoading] = useState(false)
     const { showToast } = useToast()
+    const navigate = useNavigate()
 
 
     const fetchAthletes = useCallback(async () => {
@@ -40,7 +42,7 @@ export default function AthletesPage() {
     const openCreate = () => { setSelected(null); setFormError(''); setModal('create') }
     const openEdit   = (a: Athlete) => { setSelected(a); setFormError(''); setModal('edit') }
     const openDelete = (a: Athlete) => { setSelected(a); setModal('delete') }
-    const openSessions = (a: Athlete) => { setSelected(a); setModal('sessions') }
+    const openSessions = (a: Athlete) => { navigate(`/athletes/${a.id}/sessions`) }
     const closeModal = () => { setModal(null); setSelected(null); setFormError('') }
 
     const handleCreate = async (data: AthleteCreate | AthleteUpdate) => {
@@ -195,30 +197,6 @@ export default function AthletesPage() {
                 </div>
             )}
 
-            {/* Modal Sessions — placeholder Phase 4 */}
-            {modal === 'sessions' && selected && (
-                <div
-                    className="fixed inset-0 flex items-center justify-center z-50"
-                    style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
-                    onClick={closeModal}
-                >
-                    <div
-                        className="rounded-2xl p-6 w-full max-w-lg mx-4"
-                        style={cardStyle}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-medium text-white">Sessions — {selected.name}</h3>
-                            <button onClick={closeModal} className="text-sm px-3 py-1 rounded-lg" style={{ color: '#94A3B8', border: '0.5px solid #1E3A5F' }}>✕</button>
-                        </div>
-                        <div className="rounded-xl py-12 text-center" style={{ backgroundColor: '#0A1628', border: '0.5px solid #1E3A5F' }}>
-                            <p className="text-2xl mb-3">🎬</p>
-                            <p className="text-sm font-medium text-white mb-1">Bientôt disponible</p>
-                            <p className="text-sm" style={{ color: '#94A3B8' }}>La gestion des sessions sera intégrée en Phase 4.</p>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     )
 }

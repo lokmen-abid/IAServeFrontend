@@ -5,70 +5,84 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import AthletesPage from './pages/AthletesPage'
+import SessionsPage from './pages/SessionsPage'
 import Layout from './components/layout/Layout'
 import AdminPage from './pages/AdminPage'
 
 
 function AppRoutes() {
-  const { isAuthenticated } = useAuth()
+    const { isAuthenticated } = useAuth()
 
-  return (
-      <Routes>
-        {/* Routes publiques */}
-        <Route
-            path="/login"
-            element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
-        />
-        <Route
-            path="/register"
-            element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
-        />
+    return (
+        <Routes>
+            {/* Routes publiques */}
+            <Route
+                path="/login"
+                element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
+            />
+            <Route
+                path="/register"
+                element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
+            />
 
-        {/* Routes protégées */}
-        <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                 <Layout>
-                    <DashboardPage />
-                 </Layout>
-              </ProtectedRoute>
-            }
-        />
-        <Route
-            path="/athletes"
-            element={
-              <ProtectedRoute>
-                  <Layout>
-                    <AthletesPage />
-                  </Layout>
-              </ProtectedRoute>
-            }
-        />
-          <Route
-              path="/admin"
-              element={
-                  <ProtectedRoute adminOnly>
-                      <Layout>
-                          <AdminPage />
-                      </Layout>
-                  </ProtectedRoute>
-              }
-          />
+            {/* Routes protégées */}
+            <Route
+                path="/dashboard"
+                element={
+                    <ProtectedRoute>
+                        <Layout>
+                            <DashboardPage />
+                        </Layout>
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/athletes"
+                element={
+                    <ProtectedRoute>
+                        <Layout>
+                            <AthletesPage />
+                        </Layout>
+                    </ProtectedRoute>
+                }
+            />
 
-        {/* Redirection par défaut */}
-        <Route
-            path="*"
-            element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
-        />
-      </Routes>
-  )
+            {/* Phase 4 — Sessions d'un athlète */}
+            <Route
+                path="/athletes/:athleteId/sessions"
+                element={
+                    <ProtectedRoute>
+                        <Layout>
+                            <SessionsPage />
+                        </Layout>
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/admin"
+                element={
+                    <ProtectedRoute adminOnly>
+                        <Layout>
+                            <AdminPage />
+                        </Layout>
+                    </ProtectedRoute>
+                }
+            />
+
+            {/* Redirection par défaut */}
+            <Route
+                path="*"
+                element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
+            />
+        </Routes>
+    )
 }
 
 export default function App() {
-  return (
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-  )
+    return (
+        <BrowserRouter>
+            <AppRoutes />
+        </BrowserRouter>
+    )
 }

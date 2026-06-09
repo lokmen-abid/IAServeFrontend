@@ -211,3 +211,33 @@ export const PHASE_LABELS: Record<string, string> = {
     acceleration:    'Accélération',
     follow_through:  'Suivi',
 }
+// ── Candidats de phase (Option 2) ───────────────────────────
+
+export interface PhaseCandidate {
+    frame:      number
+    score:      number
+    confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNRELIABLE'
+}
+
+export interface PhaseResult {
+    suggested_frame: number | null
+    confidence:      'HIGH' | 'MEDIUM' | 'LOW' | 'UNRELIABLE'
+    screenshot_b64:  string       // JPEG base64, vide si pas de vidéo
+    key_angles:      Record<string, number>
+    top3:            PhaseCandidate[]
+}
+
+export interface CandidatesResponse {
+    session_id:   string
+    gesture:      string
+    total_frames: number
+    fps:          number
+    best:         Record<string, number> | null  // {phase: frame_number}
+    has_video:    boolean
+    phases:       Record<string, PhaseResult>
+}
+
+export const getSessionCandidates = async (sessionId: string): Promise<CandidatesResponse> => {
+    const response = await client.get<CandidatesResponse>(`/api/sessions/${sessionId}/candidates`)
+    return response.data
+}
