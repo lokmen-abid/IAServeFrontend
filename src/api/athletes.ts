@@ -47,8 +47,8 @@ export const getAthleteById = async (id: string): Promise<Athlete> => {
 
 // Modifier un athlète (partiel)
 export const updateAthlete = async (id: string, data: AthleteUpdate): Promise<Athlete> => {
-    const response = await client.put<Athlete>(`/api/athletes/${id}`, data)
-    return response.data
+    const response = await client.put<{ message: string; athlete: Athlete }>(`/api/athletes/${id}`, data)
+    return response.data.athlete
 }
 
 // Supprimer un athlète

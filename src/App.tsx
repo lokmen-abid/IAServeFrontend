@@ -8,6 +8,7 @@ import AthletesPage from './pages/AthletesPage'
 import SessionsPage from './pages/SessionsPage'
 import Layout from './components/layout/Layout'
 import AdminPage from './pages/AdminPage'
+import AthleteProfilePage from './pages/AthleteProfilePage'
 
 
 function AppRoutes() {
@@ -75,6 +76,16 @@ function AppRoutes() {
                 path="*"
                 element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
             />
+             <Route
+                 path="/athletes/:athleteId"
+                 element={
+                     <ProtectedRoute>
+                         <Layout>
+                             <AthleteProfilePage />
+                         </Layout>
+                     </ProtectedRoute>
+                 }
+             />
         </Routes>
     )
 }

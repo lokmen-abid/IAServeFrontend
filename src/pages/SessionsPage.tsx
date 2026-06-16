@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getAthleteById } from '../api/athletes'
 import type { Athlete } from '../api/athletes'
 import {
-    getSessionsByAthlete, createSession, deleteSession,
+    getSessionsByAthlete, getSessionById, createSession, deleteSession,
     uploadSessionVideo, analyzeSession, getSessionResults,
-    updatePhaseAnnotations,
+    updatePhaseAnnotations,exportSessionPdf,
     GESTURE_LABELS, STATUS_LABELS, STATUS_COLORS, PHASE_KEYS, PHASE_LABELS,
 } from '../api/sessions'
 import type { Session, SessionResults, GestureType, SessionStatus } from '../api/sessions'
@@ -50,6 +50,7 @@ export default function SessionsPage() {
 
     const [uploadProgress, setUploadProgress] = useState<number | null>(null)
     const fileRef = useRef<HTMLInputElement>(null)
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
     const [analyzeLoading, setAnalyzeLoading] = useState(false)
     const [analyzeHint, setAnalyzeHint]       = useState<string | null>(null)
@@ -60,7 +61,7 @@ export default function SessionsPage() {
 
     const [deleteTarget, setDeleteTarget]     = useState<Session | null>(null)
     const [deleteLoading, setDeleteLoading]   = useState(false)
-
+    const [pdfLoading, setPdfLoading] = useState(false)
     // ── Data ────────────────────────────────────────────────
     const fetchData = useCallback(async () => {
         if (!athleteId) return
@@ -151,21 +152,65 @@ export default function SessionsPage() {
         e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleUpload(f)
     }
 
+    const stopPolling = useCallback(() => {
+        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+    }, [])
+
+    // Nettoyer le polling si on quitte la page
+    useEffect(() => () => stopPolling(), [stopPolling])
+
     const handleAnalyze = async () => {
         if (!active) return
         setAnalyzeLoading(true); setAnalyzeHint(null)
         try {
+            // 1. Lancer l'analyse — le backend répond immédiatement (202)
             const resp = await analyzeSession(active.id)
             if (resp.hint) setAnalyzeHint(resp.hint)
-            showToast(resp.has_annotations ? 'Analyse complète terminée' : 'Passe 1 terminée — annotez les phases')
-            if (!resp.has_annotations) setShowCandidates(true)
+
+            // Mettre à jour le badge de statut localement
+            setActive(prev => prev ? { ...prev, status: 'processing' } : prev)
             await fetchData()
-            const refreshed = (await getSessionsByAthlete(athleteId!)).data.find(s => s.id === active.id)
-            if (refreshed) openSession(refreshed)
+
+            // 2. Poller GET /sessions/{id} toutes les 3s jusqu'à fin du pipeline
+            stopPolling()
+            pollRef.current = setInterval(async () => {
+                try {
+                    const refreshed = await getSessionById(active.id)
+                    setActive(refreshed)
+
+                    // Mettre à jour la liste sidebar aussi
+                    setSessions(prev => prev.map(s => s.id === refreshed.id ? refreshed : s))
+
+                    if (refreshed.status === 'completed') {
+                        stopPolling()
+                        setAnalyzeLoading(false)
+                        showToast(resp.has_annotations ? 'Analyse complète terminée ✓' : 'Passe 1 terminée — annotez les phases')
+                        if (!resp.has_annotations) setShowCandidates(true)
+                        // Charger les résultats si passe 2
+                        if (resp.has_annotations) {
+                            setResultsLoading(true)
+                            try {
+                                const r = await getSessionResults(refreshed.id)
+                                setResults(r)
+                            } catch { setResults(null) }
+                            finally { setResultsLoading(false) }
+                        }
+                    } else if (refreshed.status === 'error') {
+                        stopPolling()
+                        setAnalyzeLoading(false)
+                        showToast('Erreur pipeline — consultez les logs serveur', 'error')
+                    }
+                } catch {
+                    // Erreur réseau passagère — on continue à poller
+                }
+            }, 3000)
+
         } catch (err: unknown) {
+            setAnalyzeLoading(false)
             const axiosErr = err as { response?: { data?: { detail?: string } } }
             showToast(axiosErr?.response?.data?.detail ?? 'Erreur pipeline', 'error')
-        } finally { setAnalyzeLoading(false) }
+        }
+        // Note : setAnalyzeLoading(false) est appelé dans le poller, pas ici
     }
 
     const handleSaveAnnotations = async () => {
@@ -211,9 +256,22 @@ export default function SessionsPage() {
         } finally { setDeleteLoading(false) }
     }
 
+    const handleExportPdf = async () => {
+        if (!active) return
+        setPdfLoading(true)
+        try {
+            await exportSessionPdf(active.id)
+            showToast('Rapport PDF téléchargé ✓')
+        } catch {
+            showToast('Erreur lors de la génération du PDF', 'error')
+        } finally {
+            setPdfLoading(false)
+        }
+    }
+
     const phaseKeys      = active ? (PHASE_KEYS[active.gesture_type as GestureType] ?? []) : []
     const hasAnnotations = active?.phase_annotations && Object.keys(active.phase_annotations).length > 0
-    const canAnalyze     = active && active.video_url && (active.status === 'processing' || active.status === 'error')
+    const canAnalyze     = active && active.video_url && ['ready', 'completed', 'error'].includes(active.status)
 
     if (isLoading) return (
         <div className="max-w-6xl mx-auto py-20 text-center">
@@ -545,7 +603,7 @@ export default function SessionsPage() {
                                             <p className="text-sm" style={{ color: '#94A3B8' }}>Chargement des résultats…</p>
                                         </div>
                                     ) : results ? (
-                                        <SessionResultsPanel results={results} />
+                                        <SessionResultsPanel results={results} onExportPdf={handleExportPdf}/>
                                     ) : (
                                         <div className="rounded-xl p-4" style={card}>
                                             <p className="text-xs font-medium text-white mb-1">Analyse exploratoire terminée</p>

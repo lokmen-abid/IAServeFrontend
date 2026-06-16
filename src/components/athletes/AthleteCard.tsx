@@ -5,9 +5,10 @@ interface Props {
     onEdit: (athlete: Athlete) => void
     onDelete: (athlete: Athlete) => void
     onViewSessions: (athlete: Athlete) => void
+    onViewProfile: (athlete: Athlete) => void
 }
 
-export default function AthleteCard({ athlete, onEdit, onDelete, onViewSessions }: Props) {
+export default function AthleteCard({ athlete, onEdit, onDelete, onViewSessions, onViewProfile }: Props) {
     const initials = athlete.name
         .split(' ')
         .map((n) => n[0])
@@ -27,6 +28,7 @@ export default function AthleteCard({ athlete, onEdit, onDelete, onViewSessions 
                 <div
                     className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-medium flex-shrink-0"
                     style={{ backgroundColor: '#10F5A015', color: '#10F5A0', border: '0.5px solid #10F5A030' }}
+                    onClick={() => onViewProfile(athlete)}
                 >
                     {initials}
                 </div>
@@ -62,26 +64,27 @@ export default function AthleteCard({ athlete, onEdit, onDelete, onViewSessions 
             {/* Actions */}
             <div className="flex items-center gap-2">
                 <button
-                    onClick={() => onViewSessions(athlete)}
+                    onClick={(e) => { e.stopPropagation(); onViewSessions(athlete) }}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
-                    style={{backgroundColor: '#38BDF815', color: '#38BDF8', border: '0.5px solid #38BDF830' }}
+                    style={{backgroundColor: '#38BDF815', color: '#38BDF8', border: '0.5px solid #38BDF830'}}
                 >
                     Sessions
                 </button>
                 <button
-                    onClick={() => onEdit(athlete)}
+                    onClick={(e) => { e.stopPropagation(); onEdit(athlete) }}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
-                    style={{ backgroundColor: '#6366F115', color: '#818CF8', border: '0.5px solid #6366F130' }}
+                    style={{backgroundColor: '#6366F115', color: '#818CF8', border: '0.5px solid #6366F130'}}
                 >
                     Modifier
                 </button>
                 <button
-                    onClick={() => onDelete(athlete)}
+                    onClick={(e) => { e.stopPropagation(); onDelete(athlete) }}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
-                    style={{ backgroundColor: '#EF444415', color: '#FCA5A5', border: '0.5px solid #EF444430' }}
+                    style={{backgroundColor: '#EF444415', color: '#FCA5A5', border: '0.5px solid #EF444430'}}
                 >
                     Supprimer
                 </button>
+
             </div>
         </div>
     )

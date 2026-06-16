@@ -42,7 +42,7 @@ export default function AthletesPage() {
     const openCreate = () => { setSelected(null); setFormError(''); setModal('create') }
     const openEdit   = (a: Athlete) => { setSelected(a); setFormError(''); setModal('edit') }
     const openDelete = (a: Athlete) => { setSelected(a); setModal('delete') }
-    const openSessions = (a: Athlete) => { navigate(`/athletes/${a.id}/sessions`) }
+    const openSessions = (a: Athlete) => { navigate(`/athletes/${a.id}`) }
     const closeModal = () => { setModal(null); setSelected(null); setFormError('') }
 
     const handleCreate = async (data: AthleteCreate | AthleteUpdate) => {
@@ -62,7 +62,8 @@ export default function AthletesPage() {
         if (!selected) return
         setFormLoading(true); setFormError('')
         try {
-            await updateAthlete(selected.id, data as AthleteUpdate)
+            const updated = await updateAthlete(selected.id, data as AthleteUpdate)
+            setAthletes(prev => prev.map(a => a.id === updated.id ? updated : a))
             await fetchAthletes()
             closeModal()
             showToast('Athlète modifié avec succès')
@@ -155,6 +156,7 @@ export default function AthletesPage() {
                             onEdit={openEdit}
                             onDelete={openDelete}
                             onViewSessions={openSessions}
+                            onViewProfile={(a) => navigate(`/athletes/${a.id}`)}
                         />
                     ))
                 )}

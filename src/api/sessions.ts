@@ -3,7 +3,7 @@ import client from './client'
 // ── Types ────────────────────────────────────────────────────
 
 export type GestureType = 'service' | 'coup_droit' | 'revers'
-export type SessionStatus = 'created' | 'processing' | 'completed' | 'error'
+export type SessionStatus = 'created' | 'ready' | 'processing' | 'completed' | 'error'
 
 export interface Session {
     id: string
@@ -72,6 +72,20 @@ export interface AnalyzeResponse {
     phases_used: Record<string, number> | null
     has_annotations: boolean
     hint: string | null
+}
+
+export interface EvolutionPoint {
+    session_id:   string
+    date:         string
+    gesture_type: string
+    joints:       Record<string, { mean: number; std: number }>
+    alerts_count: number
+}
+
+export interface AthleteEvolution {
+    athlete_id:     string
+    sessions_count: number
+    series:         EvolutionPoint[]
 }
 
 // ── CRUD de base ─────────────────────────────────────────────
@@ -161,6 +175,40 @@ export const getSessionResults = async (sessionId: string): Promise<SessionResul
     return response.data
 }
 
+export const exportSessionPdf = async (
+    sessionId: string,
+    filename?: string
+    ): Promise<void> => {
+    const response = await client.get(
+        `/api/sessions/${sessionId}/report`,
+        { responseType: 'blob' }
+    )
+
+    // Récupérer le nom de fichier depuis le header Content-Disposition si disponible
+    const disposition: string = response.headers['content-disposition'] ?? ''
+    const match = disposition.match(/filename="?([^";\n]+)"?/)
+    const resolvedFilename = match?.[1] ?? filename ?? `rapport_${sessionId}.pdf`
+
+    // Créer un lien temporaire et déclencher le téléchargement
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = resolvedFilename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+}
+
+export const getAthleteEvolution = async (
+    athleteId: string
+    ): Promise<AthleteEvolution> => {
+    const response = await client.get<AthleteEvolution>(
+        `/api/sessions/athlete/${athleteId}/evolution`
+    )
+    return response.data
+}
+
 // ── Annotations de phase ─────────────────────────────────────
 
 // Sauvegarder les frames clés annotées par le spécialiste
@@ -183,6 +231,7 @@ export const GESTURE_LABELS: Record<GestureType, string> = {
 
 export const STATUS_LABELS: Record<SessionStatus, string> = {
     created:    'Créée',
+    ready:      'Prête',
     processing: 'En cours',
     completed:  'Terminée',
     error:      'Erreur',
@@ -191,15 +240,16 @@ export const STATUS_LABELS: Record<SessionStatus, string> = {
 // Couleurs Tailwind-safe pour les badges de statut
 export const STATUS_COLORS: Record<SessionStatus, { bg: string; text: string; border: string }> = {
     created:    { bg: '#1E3A5F20', text: '#38BDF8', border: '#38BDF830' },
+    ready:      { bg: '#1D9E7520', text: '#10F5A0', border: '#1D9E7530' },
     processing: { bg: '#EF9F2720', text: '#FAC775', border: '#EF9F2730' },
-    completed:  { bg: '#1D9E7520', text: '#10F5A0', border: '#1D9E7530' },
+    completed:  { bg: '#6366F120', text: '#A5B4FC', border: '#6366F130' },
     error:      { bg: '#E24B4A20', text: '#F09595', border: '#E24B4A30' },
 }
 
 // Phases attendues selon le type de geste (pour le formulaire d'annotation)
 export const PHASE_KEYS: Record<GestureType, string[]> = {
     service:    ['trophy_position', 'racket_low_point', 'ball_impact'],
-    coup_droit: ['preparation', 'acceleration', 'follow_through'],
+    coup_droit: ['preparation', 'acceleration', 'ball_impact'],
     revers:     ['preparation', 'racket_low_point', 'ball_impact'],
 }
 
@@ -214,9 +264,11 @@ export const PHASE_LABELS: Record<string, string> = {
 // ── Candidats de phase (Option 2) ───────────────────────────
 
 export interface PhaseCandidate {
-    frame:      number
-    score:      number
-    confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNRELIABLE'
+    frame:          number
+    score:          number
+    confidence:     'HIGH' | 'MEDIUM' | 'LOW' | 'UNRELIABLE'
+    screenshot_b64: string
+    key_angles:     Record<string, number>
 }
 
 export interface PhaseResult {
