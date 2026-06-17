@@ -37,9 +37,10 @@ type Tab = 'chart' | 'metrics' | 'deltas'
 interface Props {
     results: SessionResults
     onExportPdf?: () => void
+    onExportCsv?: () => void
 }
 
-export default function SessionResultsPanel({ results, onExportPdf }: Props) {
+export default function SessionResultsPanel({ results, onExportPdf, onExportCsv }: Props) {
     const [tab, setTab] = useState<Tab>('chart')
 
     const card = { backgroundColor: '#0F2035', border: '0.5px solid #1E3A5F' }
@@ -77,6 +78,8 @@ export default function SessionResultsPanel({ results, onExportPdf }: Props) {
         { id: 'deltas',  label: `Écarts Δ (${normChartData.length})` },
     ]
 
+
+
     return (
         <div className="space-y-4">
 
@@ -113,6 +116,15 @@ export default function SessionResultsPanel({ results, onExportPdf }: Props) {
                         >
                             Exporter PDF
                         </button>
+                    )}
+                    {onExportCsv && (                          // ← ajouter ce bloc
+                       <button
+                        onClick={onExportCsv}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-90 flex-shrink-0"
+                        style={{ backgroundColor: '#10F5A020', color: '#10F5A0', border: '0.5px solid #10F5A040' }}
+                       >
+                        Exporter CSV
+                       </button>
                     )}
                 </div>
 

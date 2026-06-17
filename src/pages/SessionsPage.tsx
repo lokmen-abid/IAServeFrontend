@@ -5,13 +5,14 @@ import type { Athlete } from '../api/athletes'
 import {
     getSessionsByAthlete, getSessionById, createSession, deleteSession,
     uploadSessionVideo, analyzeSession, getSessionResults,
-    updatePhaseAnnotations,exportSessionPdf,
+    updatePhaseAnnotations, exportSessionPdf, exportSessionCsv,
     GESTURE_LABELS, STATUS_LABELS, STATUS_COLORS, PHASE_KEYS, PHASE_LABELS,
 } from '../api/sessions'
 import type { Session, SessionResults, GestureType, SessionStatus } from '../api/sessions'
 import SessionResultsPanel from '../components/sessions/SessionResultsPanel'
 import FrameCandidatesPanel from '../components/sessions/FrameCandidatesPanel'
 import { useToast } from '../contexts/ToastContext'
+
 
 const card   = { backgroundColor: '#0F2035', border: '0.5px solid #1E3A5F' } as const
 const inner  = { backgroundColor: '#0A1628', border: '0.5px solid #1E3A5F' } as const
@@ -61,7 +62,14 @@ export default function SessionsPage() {
 
     const [deleteTarget, setDeleteTarget]     = useState<Session | null>(null)
     const [deleteLoading, setDeleteLoading]   = useState(false)
-    const [pdfLoading, setPdfLoading] = useState(false)
+
+    // Filtres + pagination
+    const [filterGesture, setFilterGesture]   = useState<GestureType | 'all'>('all')
+    const [filterStatus,  setFilterStatus]    = useState<SessionStatus | 'all'>('all')
+    const [sortDesc,      setSortDesc]        = useState(true)
+    const [page,          setPage]            = useState(0)
+    const PAGE_SIZE = 10
+
     // ── Data ────────────────────────────────────────────────
     const fetchData = useCallback(async () => {
         if (!athleteId) return
@@ -89,7 +97,6 @@ export default function SessionsPage() {
         setResults(null)
         setAnalyzeHint(null)
         setShowCandidates(false)
-        // Collapse sidebar when a session is opened (more space for detail)
         setSidebarOpen(false)
 
         const keys = PHASE_KEYS[s.gesture_type as GestureType] ?? []
@@ -125,7 +132,7 @@ export default function SessionsPage() {
             showToast('Session créée')
             setShowCreate(false)
             await fetchData()
-            openSession(s)
+            void openSession(s)
         } catch {
             showToast('Erreur lors de la création', 'error')
         } finally { setCreateLoading(false) }
@@ -146,39 +153,36 @@ export default function SessionsPage() {
     }
 
     const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const f = e.target.files?.[0]; if (f) handleUpload(f)
+        const f = e.target.files?.[0]
+        if (f) void handleUpload(f)
     }
     const onDrop = (e: React.DragEvent) => {
-        e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleUpload(f)
+        e.preventDefault()
+        const f = e.dataTransfer.files?.[0]
+        if (f) void handleUpload(f)
     }
 
     const stopPolling = useCallback(() => {
         if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     }, [])
 
-    // Nettoyer le polling si on quitte la page
     useEffect(() => () => stopPolling(), [stopPolling])
 
     const handleAnalyze = async () => {
         if (!active) return
         setAnalyzeLoading(true); setAnalyzeHint(null)
         try {
-            // 1. Lancer l'analyse — le backend répond immédiatement (202)
             const resp = await analyzeSession(active.id)
             if (resp.hint) setAnalyzeHint(resp.hint)
 
-            // Mettre à jour le badge de statut localement
             setActive(prev => prev ? { ...prev, status: 'processing' } : prev)
             await fetchData()
 
-            // 2. Poller GET /sessions/{id} toutes les 3s jusqu'à fin du pipeline
             stopPolling()
             pollRef.current = setInterval(async () => {
                 try {
                     const refreshed = await getSessionById(active.id)
                     setActive(refreshed)
-
-                    // Mettre à jour la liste sidebar aussi
                     setSessions(prev => prev.map(s => s.id === refreshed.id ? refreshed : s))
 
                     if (refreshed.status === 'completed') {
@@ -186,7 +190,6 @@ export default function SessionsPage() {
                         setAnalyzeLoading(false)
                         showToast(resp.has_annotations ? 'Analyse complète terminée ✓' : 'Passe 1 terminée — annotez les phases')
                         if (!resp.has_annotations) setShowCandidates(true)
-                        // Charger les résultats si passe 2
                         if (resp.has_annotations) {
                             setResultsLoading(true)
                             try {
@@ -198,7 +201,10 @@ export default function SessionsPage() {
                     } else if (refreshed.status === 'error') {
                         stopPolling()
                         setAnalyzeLoading(false)
-                        showToast('Erreur pipeline — consultez les logs serveur', 'error')
+                        const errMsg = refreshed.error_message
+                            ? refreshed.error_message.slice(0, 80)
+                            : 'Erreur pipeline — voir détails dans la session'
+                        showToast(errMsg, 'error')
                     }
                 } catch {
                     // Erreur réseau passagère — on continue à poller
@@ -210,7 +216,6 @@ export default function SessionsPage() {
             const axiosErr = err as { response?: { data?: { detail?: string } } }
             showToast(axiosErr?.response?.data?.detail ?? 'Erreur pipeline', 'error')
         }
-        // Note : setAnalyzeLoading(false) est appelé dans le poller, pas ici
     }
 
     const handleSaveAnnotations = async () => {
@@ -258,16 +263,40 @@ export default function SessionsPage() {
 
     const handleExportPdf = async () => {
         if (!active) return
-        setPdfLoading(true)
         try {
             await exportSessionPdf(active.id)
             showToast('Rapport PDF téléchargé ✓')
         } catch {
             showToast('Erreur lors de la génération du PDF', 'error')
-        } finally {
-            setPdfLoading(false)
         }
     }
+
+    const handleExportCsv = async () => {
+       if (!active) return
+       try {
+           await exportSessionCsv(active.id)
+           showToast('CSV téléchargé ✓')
+       } catch {
+           showToast('Erreur lors de l\'export CSV', 'error')
+       }
+   }
+
+    // ── Filtres + tri + pagination ───────────────────────────
+    const filtered = sessions
+        .filter(s => filterGesture === 'all' || s.gesture_type === filterGesture)
+        .filter(s => filterStatus  === 'all' || s.status       === filterStatus)
+        .sort((a, b) => {
+            const ta = new Date(a.created_at).getTime()
+            const tb = new Date(b.created_at).getTime()
+            return sortDesc ? tb - ta : ta - tb
+        })
+
+    const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+    const paginated  = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+    const changeGesture = (v: GestureType | 'all') => { setFilterGesture(v); setPage(0) }
+    const changeStatus  = (v: SessionStatus | 'all') => { setFilterStatus(v); setPage(0) }
+    const toggleSort    = () => { setSortDesc(p => !p); setPage(0) }
 
     const phaseKeys      = active ? (PHASE_KEYS[active.gesture_type as GestureType] ?? []) : []
     const hasAnnotations = active?.phase_annotations && Object.keys(active.phase_annotations).length > 0
@@ -296,7 +325,8 @@ export default function SessionsPage() {
                         Sessions — {athlete?.name ?? '…'}
                     </h1>
                     <p className="text-xs mt-0.5" style={{ color: '#64748B' }}>
-                        {sessions.length} session{sessions.length !== 1 ? 's' : ''}
+                        {filtered.length} session{filtered.length !== 1 ? 's' : ''}
+                        {filtered.length !== sessions.length && ` (${sessions.length} au total)`}
                         {athlete && <> · {athlete.dominant_hand === 'right' ? 'Droitier' : 'Gaucher'} · {athlete.age} ans</>}
                     </p>
                 </div>
@@ -328,7 +358,7 @@ export default function SessionsPage() {
                         ))}
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={handleCreate} disabled={createLoading}
+                        <button onClick={() => void handleCreate()} disabled={createLoading}
                                 className="px-4 py-2 rounded-lg text-sm font-medium"
                                 style={{ ...accent, opacity: createLoading ? 0.6 : 1 }}>
                             {createLoading ? 'Création…' : 'Créer'}
@@ -345,12 +375,12 @@ export default function SessionsPage() {
             {/* ── Main layout ── */}
             <div className="flex gap-4 items-start">
 
-                {/* ── Sidebar collapsible ── */}
+                {/* ── Sidebar ── */}
                 <div
                     className="flex-shrink-0 transition-all duration-200"
                     style={{ width: sidebarOpen ? 260 : 48 }}
                 >
-                    {/* Toggle button */}
+                    {/* Toggle */}
                     <button
                         onClick={() => setSidebarOpen(!sidebarOpen)}
                         className="w-full flex items-center justify-between mb-2 px-2 py-1.5 rounded-lg text-xs transition-all hover:opacity-80"
@@ -360,28 +390,93 @@ export default function SessionsPage() {
                         <span>{sidebarOpen ? '◀' : '▶'}</span>
                     </button>
 
-                    {/* Session list */}
+                    {/* Filtres (sidebar ouverte seulement) */}
+                    {sidebarOpen && (
+                        <div className="space-y-1.5 mb-2">
+                            <select
+                                value={filterGesture}
+                                onChange={e => changeGesture(e.target.value as GestureType | 'all')}
+                                className="w-full rounded-lg px-2 py-1.5 text-xs outline-none"
+                                style={{ backgroundColor: '#0A1628', border: '0.5px solid #1E3A5F', color: '#94A3B8' }}
+                            >
+                                <option value="all">Tous les gestes</option>
+                                <option value="service">Service</option>
+                                <option value="coup_droit">Coup droit</option>
+                                <option value="revers">Revers</option>
+                            </select>
+
+                            <select
+                                value={filterStatus}
+                                onChange={e => changeStatus(e.target.value as SessionStatus | 'all')}
+                                className="w-full rounded-lg px-2 py-1.5 text-xs outline-none"
+                                style={{ backgroundColor: '#0A1628', border: '0.5px solid #1E3A5F', color: '#94A3B8' }}
+                            >
+                                <option value="all">Tous les statuts</option>
+                                <option value="created">Créée</option>
+                                <option value="ready">Prête</option>
+                                <option value="processing">En cours</option>
+                                <option value="completed">Complétée</option>
+                                <option value="error">Erreur</option>
+                            </select>
+
+                            <button
+                                onClick={toggleSort}
+                                className="w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-xs transition-opacity hover:opacity-80"
+                                style={{ backgroundColor: '#0A1628', border: '0.5px solid #1E3A5F', color: '#64748B' }}
+                            >
+                                <span>Date</span>
+                                <span>{sortDesc ? '↓ Plus récente' : '↑ Plus ancienne'}</span>
+                            </button>
+
+                            {(filterGesture !== 'all' || filterStatus !== 'all') && (
+                                <button
+                                    onClick={() => { changeGesture('all'); changeStatus('all') }}
+                                    className="w-full text-xs py-1 rounded-lg transition-opacity hover:opacity-80"
+                                    style={{ color: '#38BDF8', backgroundColor: '#38BDF810', border: '0.5px solid #38BDF830' }}
+                                >
+                                    ✕ Réinitialiser les filtres
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Liste paginée */}
                     <div className="space-y-1.5">
-                        {sessions.length === 0 && sidebarOpen ? (
+                        {paginated.length === 0 && sidebarOpen ? (
                             <div className="rounded-xl py-10 text-center" style={card}>
-                                <p className="text-xl mb-2">🎬</p>
-                                <p className="text-xs text-white">Aucune session</p>
+                                <p className="text-xl mb-2">🔍</p>
+                                <p className="text-xs text-white">
+                                    {filtered.length === 0 && sessions.length > 0
+                                        ? 'Aucune session ne correspond aux filtres'
+                                        : 'Aucune session'}
+                                </p>
+                                {filtered.length === 0 && sessions.length > 0 && (
+                                    <button
+                                        onClick={() => { changeGesture('all'); changeStatus('all') }}
+                                        className="text-xs mt-2 hover:opacity-80"
+                                        style={{ color: '#38BDF8' }}
+                                    >
+                                        Réinitialiser
+                                    </button>
+                                )}
                             </div>
                         ) : (
-                            sessions.map((s) => {
+                            paginated.map((s) => {
                                 const isAct = active?.id === s.id
                                 const c = STATUS_COLORS[s.status as SessionStatus] ?? STATUS_COLORS.created
                                 return (
                                     <button
                                         key={s.id}
-                                        onClick={() => openSession(s)}
+                                        onClick={() => void openSession(s)}
                                         className="w-full text-left rounded-xl transition-all"
                                         style={{
                                             backgroundColor: isAct ? '#162A45' : '#0F2035',
                                             border: `0.5px solid ${isAct ? '#38BDF850' : '#1E3A5F'}`,
                                             padding: sidebarOpen ? '10px 12px' : '10px',
                                         }}
-                                        title={!sidebarOpen ? `${GESTURE_LABELS[s.gesture_type as GestureType]} — ${STATUS_LABELS[s.status as SessionStatus]}` : undefined}
+                                        title={!sidebarOpen
+                                            ? `${GESTURE_LABELS[s.gesture_type as GestureType]} — ${STATUS_LABELS[s.status as SessionStatus]}`
+                                            : undefined}
                                     >
                                         {sidebarOpen ? (
                                             <>
@@ -403,7 +498,6 @@ export default function SessionsPage() {
                                                 </div>
                                             </>
                                         ) : (
-                                            /* Collapsed: just a colored dot */
                                             <div className="flex justify-center">
                                                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.text }} />
                                             </div>
@@ -413,7 +507,41 @@ export default function SessionsPage() {
                             })
                         )}
                     </div>
+
+                    {/* Pagination */}
+                    {sidebarOpen && totalPages > 1 && (
+                        <div className="mt-3 flex items-center justify-between">
+                            <button
+                                onClick={() => setPage(p => Math.max(0, p - 1))}
+                                disabled={page === 0}
+                                className="px-2 py-1 rounded-lg text-xs"
+                                style={{
+                                    backgroundColor: '#0A1628',
+                                    border: '0.5px solid #1E3A5F',
+                                    color: page === 0 ? '#2D4A6A' : '#94A3B8',
+                                }}
+                            >
+                                ←
+                            </button>
+                            <span className="text-xs" style={{ color: '#64748B' }}>
+                                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} / {filtered.length}
+                            </span>
+                            <button
+                                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                                disabled={page >= totalPages - 1}
+                                className="px-2 py-1 rounded-lg text-xs"
+                                style={{
+                                    backgroundColor: '#0A1628',
+                                    border: '0.5px solid #1E3A5F',
+                                    color: page >= totalPages - 1 ? '#2D4A6A' : '#94A3B8',
+                                }}
+                            >
+                                →
+                            </button>
+                        </div>
+                    )}
                 </div>
+                {/* ── Fin sidebar ── */}
 
                 {/* ── Detail panel ── */}
                 <div className="flex-1 min-w-0 space-y-4">
@@ -425,7 +553,7 @@ export default function SessionsPage() {
                         </div>
                     ) : (
                         <>
-                            {/* ── Session header ── */}
+                            {/* Session header */}
                             <div className="rounded-xl px-4 py-3 flex items-center justify-between" style={card}>
                                 <div className="flex items-center gap-3">
                                     <h2 className="text-sm font-medium text-white">
@@ -440,7 +568,7 @@ export default function SessionsPage() {
                                 <button onClick={closeDetail} className="text-xs hover:opacity-80" style={{ color: '#64748B' }}>✕</button>
                             </div>
 
-                            {/* ── Upload zone (created) ── */}
+                            {/* Upload zone */}
                             {active.status === 'created' && (
                                 <div
                                     className="rounded-xl p-10 text-center cursor-pointer transition-all"
@@ -468,11 +596,10 @@ export default function SessionsPage() {
                                 </div>
                             )}
 
-                            {/* ── Analyze + Annotations côte à côte ── */}
+                            {/* Analyze + Annotations */}
                             {active.status !== 'created' && (
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-                                    {/* Analyze block */}
                                     {canAnalyze && (
                                         <div className="rounded-xl p-4" style={card}>
                                             <p className="text-xs font-medium text-white mb-1">Lancer l'analyse</p>
@@ -482,7 +609,7 @@ export default function SessionsPage() {
                                                     : 'Sans annotation — mode exploration (Passe 1).'}
                                             </p>
                                             <button
-                                                onClick={handleAnalyze}
+                                                onClick={() => void handleAnalyze()}
                                                 disabled={analyzeLoading}
                                                 className="w-full py-2.5 rounded-lg text-sm font-medium transition-opacity"
                                                 style={{ ...accent, opacity: analyzeLoading ? 0.6 : 1 }}
@@ -491,9 +618,27 @@ export default function SessionsPage() {
                                                     : hasAnnotations ? '🚀 Lancer l\'analyse complète'
                                                         : '🔍 Passe exploratoire'}
                                             </button>
+
                                             {active.status === 'error' && (
-                                                <p className="text-xs mt-2" style={{ color: '#FCA5A5' }}>Analyse précédente échouée.</p>
+                                                <div className="mt-3 rounded-xl p-3 space-y-2"
+                                                     style={{ backgroundColor: '#EF444410', border: '0.5px solid #EF444430' }}>
+                                                    <p className="text-xs font-medium" style={{ color: '#FCA5A5' }}>
+                                                        ⚠ Analyse précédente échouée
+                                                    </p>
+                                                    {active.error_message && (
+                                                        <pre
+                                                            className="text-xs rounded-lg p-2 overflow-x-auto whitespace-pre-wrap break-words"
+                                                            style={{ backgroundColor: '#0A1628', color: '#94A3B8', maxHeight: '120px', overflowY: 'auto' }}
+                                                        >
+                                                            {active.error_message}
+                                                        </pre>
+                                                    )}
+                                                    <p className="text-xs" style={{ color: '#64748B' }}>
+                                                        Corrigez le problème puis relancez l'analyse ci-dessus.
+                                                    </p>
+                                                </div>
                                             )}
+
                                             {analyzeHint && (
                                                 <p className="text-xs mt-2 rounded-lg px-3 py-2" style={{ color: '#FAC775', backgroundColor: '#EF9F2710' }}>
                                                     💡 {analyzeHint}
@@ -502,13 +647,11 @@ export default function SessionsPage() {
                                         </div>
                                     )}
 
-                                    {/* FrameCandidatesPanel — Passe 1 terminée */}
                                     {showCandidates && active.status !== 'processing' && (
                                         <div className="lg:col-span-2">
                                             <FrameCandidatesPanel
                                                 sessionId={active.id}
                                                 onAcceptAll={(annots) => {
-                                                    // Pré-remplit tous les champs annotation
                                                     const strAnnots: Record<string, string> = {}
                                                     Object.entries(annots).forEach(([k, v]) => { strAnnots[k] = String(v) })
                                                     setAnnotations(strAnnots)
@@ -521,7 +664,6 @@ export default function SessionsPage() {
                                         </div>
                                     )}
 
-                                    {/* Annotation block */}
                                     {phaseKeys.length > 0 && (
                                         <div className="rounded-xl p-4" style={card}>
                                             <p className="text-xs font-medium text-white mb-1">Annotation des phases</p>
@@ -549,7 +691,7 @@ export default function SessionsPage() {
                                             </div>
                                             <div className="flex gap-2 mt-3 flex-wrap">
                                                 <button
-                                                    onClick={handleSaveAnnotations}
+                                                    onClick={() => void handleSaveAnnotations()}
                                                     disabled={annotSaving}
                                                     className="flex-1 py-2 rounded-lg text-xs font-medium"
                                                     style={{ backgroundColor: '#38BDF815', color: '#38BDF8', border: '0.5px solid #38BDF830', opacity: annotSaving ? 0.6 : 1 }}
@@ -558,7 +700,7 @@ export default function SessionsPage() {
                                                 </button>
                                                 {hasAnnotations && active.status !== 'processing' && (
                                                     <button
-                                                        onClick={handleAnalyze}
+                                                        onClick={() => void handleAnalyze()}
                                                         disabled={analyzeLoading}
                                                         className="flex-1 py-2 rounded-lg text-xs font-medium"
                                                         style={{ ...accent, opacity: analyzeLoading ? 0.6 : 1 }}
@@ -579,11 +721,10 @@ export default function SessionsPage() {
                                         </div>
                                     )}
 
-                                    {/* If completed but no canAnalyze, show relaunch in annotation block area */}
                                     {!canAnalyze && active.status === 'completed' && hasAnnotations && phaseKeys.length === 0 && (
                                         <div className="rounded-xl p-4" style={card}>
                                             <button
-                                                onClick={handleAnalyze}
+                                                onClick={() => void handleAnalyze()}
                                                 disabled={analyzeLoading}
                                                 className="w-full py-2.5 rounded-lg text-sm font-medium"
                                                 style={{ ...accent, opacity: analyzeLoading ? 0.6 : 1 }}
@@ -595,7 +736,7 @@ export default function SessionsPage() {
                                 </div>
                             )}
 
-                            {/* ── Results ── */}
+                            {/* Results */}
                             {active.status === 'completed' && (
                                 <>
                                     {resultsLoading ? (
@@ -603,7 +744,7 @@ export default function SessionsPage() {
                                             <p className="text-sm" style={{ color: '#94A3B8' }}>Chargement des résultats…</p>
                                         </div>
                                     ) : results ? (
-                                        <SessionResultsPanel results={results} onExportPdf={handleExportPdf}/>
+                                        <SessionResultsPanel results={results} onExportPdf={() => void handleExportPdf()} onExportCsv={() => void handleExportCsv()} />
                                     ) : (
                                         <div className="rounded-xl p-4" style={card}>
                                             <p className="text-xs font-medium text-white mb-1">Analyse exploratoire terminée</p>
@@ -617,9 +758,12 @@ export default function SessionsPage() {
                         </>
                     )}
                 </div>
-            </div>
+                {/* ── Fin detail panel ── */}
 
-            {/* ── Delete modal ── */}
+            </div>
+            {/* ── Fin main layout ── */}
+
+            {/* Delete modal */}
             {deleteTarget && (
                 <div className="fixed inset-0 flex items-center justify-center z-50"
                      style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}
@@ -637,7 +781,7 @@ export default function SessionsPage() {
                                     className="flex-1 py-2 rounded-lg text-sm" style={{ ...inner, color: '#94A3B8' }}>
                                 Annuler
                             </button>
-                            <button onClick={handleDelete} disabled={deleteLoading}
+                            <button onClick={() => void handleDelete()} disabled={deleteLoading}
                                     className="flex-1 py-2 rounded-lg text-sm font-medium"
                                     style={{ backgroundColor: '#EF444415', color: '#FCA5A5', border: '0.5px solid #EF444430', opacity: deleteLoading ? 0.6 : 1 }}>
                                 {deleteLoading ? 'Suppression…' : 'Supprimer'}
@@ -646,6 +790,7 @@ export default function SessionsPage() {
                     </div>
                 </div>
             )}
+
         </div>
     )
 }

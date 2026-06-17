@@ -16,6 +16,7 @@ export interface Session {
     video_url: string
     phase_annotations: Record<string, number> | null
     created_at: string
+    error_message: string | null
 }
 
 export interface SessionCreate {
@@ -191,6 +192,29 @@ export const exportSessionPdf = async (
 
     // Créer un lien temporaire et déclencher le téléchargement
     const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = resolvedFilename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+}
+
+export const exportSessionCsv = async (
+    sessionId: string,
+    filename?: string
+    ): Promise<void> => {
+    const response = await client.get(
+        `/api/sessions/${sessionId}/export/csv`,
+        { responseType: 'blob' }
+    )
+
+    const disposition: string = response.headers['content-disposition'] ?? ''
+    const match = disposition.match(/filename="?([^";\n]+)"?/)
+    const resolvedFilename = match?.[1] ?? filename ?? `metriques_${sessionId}.csv`
+
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'text/csv' }))
     const link = document.createElement('a')
     link.href = url
     link.download = resolvedFilename
