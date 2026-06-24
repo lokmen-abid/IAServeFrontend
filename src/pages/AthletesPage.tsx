@@ -20,6 +20,8 @@ export default function AthletesPage() {
     const [deleteLoading, setDeleteLoading] = useState(false)
     const { showToast } = useToast()
     const navigate = useNavigate()
+    const openSessions    = (a: Athlete) => { navigate(`/athletes/${a.id}/sessions`) }
+    const openGameAnalysis = (a: Athlete) => { navigate(`/athletes/${a.id}/game-analysis`) }
 
 
     const fetchAthletes = useCallback(async () => {
@@ -42,7 +44,6 @@ export default function AthletesPage() {
     const openCreate = () => { setSelected(null); setFormError(''); setModal('create') }
     const openEdit   = (a: Athlete) => { setSelected(a); setFormError(''); setModal('edit') }
     const openDelete = (a: Athlete) => { setSelected(a); setModal('delete') }
-    const openSessions = (a: Athlete) => { navigate(`/athletes/${a.id}`) }
     const closeModal = () => { setModal(null); setSelected(null); setFormError('') }
 
     const handleCreate = async (data: AthleteCreate | AthleteUpdate) => {
@@ -156,6 +157,7 @@ export default function AthletesPage() {
                             onEdit={openEdit}
                             onDelete={openDelete}
                             onViewSessions={openSessions}
+                            onViewGameAnalysis={openGameAnalysis}
                             onViewProfile={(a) => navigate(`/athletes/${a.id}`)}
                         />
                     ))

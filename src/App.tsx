@@ -9,6 +9,7 @@ import SessionsPage from './pages/SessionsPage'
 import Layout from './components/layout/Layout'
 import AdminPage from './pages/AdminPage'
 import AthleteProfilePage from './pages/AthleteProfilePage'
+import GameAnalysisPage from './pages/GameAnalysisPage'
 
 
 function AppRoutes() {
@@ -86,6 +87,15 @@ function AppRoutes() {
                      </ProtectedRoute>
                  }
              />
+            <Route
+                path="/athletes/:athleteId/game-analysis"
+                element={
+                <ProtectedRoute>
+                    <Layout>
+                        <GameAnalysisPage />
+                    </Layout>
+                </ProtectedRoute>}
+            />
         </Routes>
     )
 }
